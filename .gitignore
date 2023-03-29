@@ -1,0 +1,8 @@
+.coverage
+.tox
+
+*.egg-info
+__pycache__
+*~
+*.pyc
+.python-version
