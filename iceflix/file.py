@@ -12,6 +12,8 @@ import os
 import Ice
 import IceFlix
 
+from functions_topics import getTopic_manager,get_topic
+
 #------------------------------------------------
 #                   FileHandler
 #------------------------------------------------
