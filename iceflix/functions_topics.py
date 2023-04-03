@@ -6,6 +6,7 @@ import IceStorm
 
 def getTopic_manager(broker):
     """Method for obtain topic manager object"""
+    topic_manager = None
     topic_manager = IceStorm.TopicManagerPrx.checkedCast(broker.propertyToProxy("IceStorm.TopicManager"))
     if not topic_manager:
         logging.error("[TOPIC MANAGER] -> This proxy is not valid")
@@ -14,6 +15,7 @@ def getTopic_manager(broker):
 
 def get_topic(topic_manager, topic):
     """Method for obtain topic from proxy"""
+    topic_retrive = None
     try:
         """Retrive topic"""
         topic_retrive = topic_manager.retrieve(topic)

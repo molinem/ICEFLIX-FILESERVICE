@@ -90,4 +90,8 @@
         void newService(Object* service, string serviceId);
         void announce(Object* service, string serviceId);
     };
+
+    interface Announcement {
+        void announce(Object* service, string serviceId);
+    };
 };
