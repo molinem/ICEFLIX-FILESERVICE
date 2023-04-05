@@ -8,12 +8,26 @@ import time
 import uuid
 import os
 import random
+import hashlib
 
 #IceFlix
 import Ice
 import IceFlix
 
 from functions_topics import getTopic_manager,get_topic
+
+"""Sources:
+    https://www.sqlitetutorial.net/sqlite-python/sqlite-python-select/
+    https://uclm-esi.github.io/ssdd-lab/python_stdlib.html
+    https://doc.zeroc.com/ice/3.7/the-slice-language/operations-on-object
+    https://www.w3schools.com/python/python_ref_string.asp
+    https://www.programiz.com/python-programming/methods/string/join
+    https://docs.python.org/3/tutorial/datastructures.html
+    https://vald-phoenix.github.io/pylint-errors/plerr/errors/basic/C0116.html
+    https://www.w3schools.com/python/ref_func_abs.asp
+    https://www.programiz.com/python-programming/methods/list/pop
+    https://docs.pylint.org/
+    https://bobbyhadz.com/blog/python-check-if-object-exists-in-list-of-objects """
 
 #----------------------------
 #        Announcements
@@ -25,41 +39,65 @@ class Announcements(IceFlix.Announcement):
 
         self.annon_event = annon_event
         self.time_to_cancel = time_to_cancel
-        self.last_main_update = {}
+        
 
     def update_time(self, service_id):
         """This method is for update time of services"""
-        self.last_main_update[service_id] = time.time()    
+        self.myFileService.last_main_update[service_id] = time.time()    
         self.event.set()
 
     def announce(self, service, service_id, current=None):
         """This method is for check services and update list of services if we haven`t add yet"""
         logging.warning("[Announcement] -> Id Service--> %s", str(service_id))
         if not service_id in self.myFileService.main_list and service.ice_isA("::IceFlix::Main"):
-            logging.warning("[Announcement] -> New main service has been detected with id--> %s", str(service_id))
+            logging.warning("[Announcement] -> New main service has been detected with id %s", str(service_id))
             self.myFileService.main_list[service_id] = IceFlix.MainPrx.uncheckedCast(service)
             self.update_time(self, service_id)
-            self.canceltimer.cancel()
+            self.time_to_cancel.cancel()
         elif service_id in self.myFileService.main_list:
             """Update time"""
             self.update_time(self, service_id)
         else:
-            logging.warning("[Announcement] -> The Announcement with id --> %s has been ignored", str(service_id))
+            logging.warning("[Announcement] -> The Announcement with id %s has been ignored", str(service_id))
 
 #----------------------------
 #        FileService
 #----------------------------
 class FileService(IceFlix.FileService):
 
-    def __init__(self, path):
+    def __init__(self, path_resources):
         """Initialize parameters"""
         self.service_id_file = str(uuid.uuid4())
 
-        self.main_list = {}
+        self.path_resources = path_resources
 
-    def get_main(self, current=None):
-        #To-do
-        return null
+        self.last_main_update = {}
+        self.main_list = {}
+        self.media_list_hash = {}
+
+        self.make_hash_medias()
+
+    def make_hash_medias(self, current=None):
+        """Calculate hash sha256 of file, this will be used for identify the file"""
+        for file in os.listdir(self.path_resources):
+            path = os.path.join(self.path_resources, file)
+            with open(path, 'rb') as file_object:
+                file_id = file_object.read()
+                file_hash = hashlib.sha256(file_id).hexdigest()
+                self.media_list_hash[file_hash] = path
+
+    def get_main_service(self, current=None):
+        """Obtain one main services from list and check if is available"""
+        if not self.main_list:
+            logging.warning("[FileService] -> There isn´t any main available previusly stored")
+            return None
+        random_main = random.choice(list(self.main_list.keys())) #Select random main service from list
+        if abs(self.last_main_update[random_main] - time.time()) > 12:
+            logging.warning("[FileService] -> There isn´t any main available that aren´t expired")
+            self.main_list.pop(random_main) #out to list
+            return None
+        return self.main_list[random_main]
+
 
     def openFile(self, mediaId, userToken, current=None):
         """"Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it"""
@@ -89,7 +127,7 @@ class FileHandler(IceFlix.FileHandler):
         self.path = path
         self.file = open(self.path, 'rb')
 
-    def is_authorized(self, userToken):
+    def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
         if self.get_main() is not None:
             main_prx = self.get_main()
