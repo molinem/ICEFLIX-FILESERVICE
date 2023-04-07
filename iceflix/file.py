@@ -8,7 +8,13 @@ import time
 import uuid
 import os
 import random
+
+#Hash
 import hashlib
+
+#File
+import shutil
+import tempfile
 
 #IceFlix
 import Ice
@@ -26,6 +32,8 @@ from functions_topics import getTopic_manager,get_topic
     https://vald-phoenix.github.io/pylint-errors/plerr/errors/basic/C0116.html
     https://www.w3schools.com/python/ref_func_abs.asp
     https://www.programiz.com/python-programming/methods/list/pop
+    https://docs.python.org/es/3/library/shutil.html
+    https://docs.python.org/3/library/tempfile.html
     https://docs.pylint.org/
     https://bobbyhadz.com/blog/python-check-if-object-exists-in-list-of-objects """
 
@@ -46,6 +54,7 @@ class Announcements(IceFlix.Announcement):
         self.myFileService.last_main_update[service_id] = time.time()    
         self.event.set()
 
+
     def announce(self, service, service_id, current=None):
         """This method is for check services and update list of services if we haven`t add yet"""
         logging.warning("[Announcement] -> Id Service--> %s", str(service_id))
@@ -60,22 +69,25 @@ class Announcements(IceFlix.Announcement):
         else:
             logging.warning("[Announcement] -> The Announcement with id %s has been ignored", str(service_id))
 
+
 #----------------------------
 #        FileService
 #----------------------------
 class FileService(IceFlix.FileService):
 
-    def __init__(self, path_resources):
+    def __init__(self, path_resources, annon_file_publish):
         """Initialize parameters"""
         self.service_id_file = str(uuid.uuid4())
 
         self.path_resources = path_resources
+        self.annon_file_publish = annon_file_publish
 
         self.last_main_update = {}
         self.main_list = {}
         self.media_list_hash = {}
 
         self.make_hash_medias()
+
 
     def make_hash_medias(self, current=None):
         """Calculate hash sha256 of file, this will be used for identify the file"""
@@ -85,6 +97,7 @@ class FileService(IceFlix.FileService):
                 file_id = file_object.read()
                 file_hash = hashlib.sha256(file_id).hexdigest()
                 self.media_list_hash[file_hash] = path
+
 
     def get_main_service(self, current=None):
         """Obtain one main services from list and check if is available"""
@@ -98,11 +111,13 @@ class FileService(IceFlix.FileService):
             return None
         return self.main_list[random_main]
 
+
     def exist_media_dictionary(self, media_id, current=None):
         """Check if the media id exist on the dictionary"""
         return media_id in self.media_list_hash
-    
-    def check_list_methods(self, user_token, current=None):
+
+
+    def check_list_methods(self, user_token, fun_admin, current=None):
         """For check if there is some problem, used in openFile, uploadFile, removeFile"""
         main_prx = self.get_main_service()
         if main_prx is None:
@@ -115,30 +130,61 @@ class FileService(IceFlix.FileService):
         if not auth_prx.isAuthorized(user_token):
             logging.warning("[FileService] -> There is a problem with your token")
             raise IceFlix.Unauthorized()
+        
+        ##Check if admin
+        if fun_admin:
+           if not auth_prx.isAdmin(user_token):
+               logging.warning("[FileService] -> Your token is not for admin user")
+               raise IceFlix.Unauthorized()
+
 
     def openFile(self, media_id, user_token, current=None):
         """"Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it"""
         """Can throws -> Unauthorized, WrongMediaId"""
         handler_prx = None
-        self.check_list_methods(user_token)
+        self.check_list_methods(user_token,False)
         if self.exist_media_dictionary(media_id):
             file_hand = FileHandler(self.media_list_hash.get(media_id))
             file_hand_prx = self.adapter.addWithUUID(file_hand)
             handler_prx = IceFlix.FileHandlerPrx.uncheckedCast(file_hand_prx) #From ObjectPrx to FileHandlerPrx
         else:
-            logging.warning("[FileService] -> The media id doesn´t exist in our records")
+            logging.warning("[OpenFile] -> The media id doesn´t exist in our records")
             raise IceFlix.WrongMediaId(media_id)
         return handler_prx
-        
+
+
     def uploadFile(self, uploader, admin_token, current=None):
         """Given the administrator token and a proxy for uploading files, it will store it in the directory and returns its identifier"""
         """Can throws -> Unauthorized"""
-        #To-do
+        size_for_section = 50
+        file_id = None
+        self.check_list_methods(admin_token,True)
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file: #Autoclose
+            try:
+                shutil.copyfileobj(uploader, temp_file, length=size_for_section) #copy from uploader object to temporal file
+            except Ice.Exception:
+                logging.warning("[UploadFile] -> There is an error with copy file")
+            temp_file.flush()
+            temp_file.seek(0)
+            file_id = hashlib.sha256(temp_file.read()).hexdigest()
+            shutil.copy(temp_file.name, os.path.join(self.path_resources, file_id))
+            os.unlink(temp_file.name) #remove temp file
+        #Announced Files
+        path_opt = self.path_resources + "/" + file_id
+        self.media_list_hash[file_id] = path_opt
+        
+        ###Check
+        all_resources = list(self.mapping_media_id)
+        self.annon_file_publish.announceFiles(all_resources,self.service_id_file)
+
+        return file_id
+
 
     def removeFile(self, media_id, admin_token, current=None):
         """Give the identifier and the administrator token"""
         """Can throws -> Unauthorized, WrongMediaId"""
         #To-do
+
 
 #----------------------------
 #        FileHandler
@@ -153,6 +199,7 @@ class FileHandler(IceFlix.FileHandler):
         self.path = path
         self.file = open(self.path, 'rb')
 
+
     def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
         if self.get_main() is not None:
@@ -162,6 +209,7 @@ class FileHandler(IceFlix.FileHandler):
                 if auth_prx.isAuthorized(userToken):
                     return True
         return False
+
 
     def receive(self, size, userToken, current=None):
         """Receive the specified number of bytes from the file"""
@@ -173,6 +221,7 @@ class FileHandler(IceFlix.FileHandler):
             logging.error("[FileHandler] -> There is a problem with user token")
             raise IceFlix.Unauthorized()
         return part
+
 
     def close(self, userToken, current=None):
         """Notify the server that the proxy for this file, won´t be used and will be removed"""
