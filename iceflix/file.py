@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 
+#pylint: disable=C0301
+#pylint: disable=unused-argument
+#pylint: disable=E0401
+
+#E0401 -> Import
+#C0301 -> Too Long
 import logging
 
 import sys
@@ -47,11 +53,11 @@ class Announcements(IceFlix.Announcement):
 
         self.annon_event = annon_event
         self.time_to_cancel = time_to_cancel
-        
+
 
     def update_time(self, service_id):
         """This method is for update time of services"""
-        self.myFileService.last_main_update[service_id] = time.time()    
+        self.myFileService.last_main_update[service_id] = time.time()
         self.event.set()
 
 
@@ -130,7 +136,7 @@ class FileService(IceFlix.FileService):
         if not auth_prx.isAuthorized(user_token):
             logging.warning("[FileService] -> There is a problem with your token")
             raise IceFlix.Unauthorized()
-        
+
         ##Check if admin
         if fun_admin:
            if not auth_prx.isAdmin(user_token):
@@ -174,16 +180,26 @@ class FileService(IceFlix.FileService):
         self.media_list_hash[file_id] = path_opt
         
         ###Check
-        all_resources = list(self.mapping_media_id)
+        all_resources = list(self.media_list_hash.keys())
         self.annon_file_publish.announceFiles(all_resources,self.service_id_file)
-
+        logging.warning("[UploadFile] -> Files has been announced")
         return file_id
 
 
     def removeFile(self, media_id, admin_token, current=None):
         """Give the identifier and the administrator token"""
         """Can throws -> Unauthorized, WrongMediaId"""
-        #To-do
+        self.check_list_methods(admin_token,True)
+        if self.exist_media_dictionary(media_id):
+            os.remove(self.media_list_hash[media_id])
+            self.media_list_hash.pop(media_id)
+
+            all_resources_up = list(self.media_list_hash.keys())
+            self.annon_file_publish.announceFiles(all_resources_up,self.service_id_file)
+        else:
+            logging.warning("[RemoveFile] -> The media id doesn´t exist in our records")
+            raise IceFlix.WrongMediaId(media_id)
+
 
 
 #----------------------------
@@ -194,7 +210,7 @@ class FileHandler(IceFlix.FileHandler):
 
     def __init__(self, path):
         """Initialize parameters for open file"""
-        self.service_id = str(uuid.uuid4())
+        self.service_id_file_handler = str(uuid.uuid4())
 
         self.path = path
         self.file = open(self.path, 'rb')
@@ -231,3 +247,16 @@ class FileHandler(IceFlix.FileHandler):
         else:
             logging.error("[FileHandler] -> There is a problem with user token")
             raise IceFlix.Unauthorized()
+
+class RunFile(Ice.Application):
+    def __init__(self):
+        self.service_run = str(uuid.uuid4())
+        self.broker = None
+
+    def run(self, args):
+        self.broker = self.communicator()
+        adapter = self.broker.createObjectAdapterWithEndpoints("FileServiceAdapter", "tcp")
+        adapter.activate()
+
+if __name__ == '__main__':
+    sys.exit(RunFile().main(sys.argv))
