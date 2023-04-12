@@ -3,9 +3,11 @@
 #pylint: disable=C0301
 #pylint: disable=unused-argument
 #pylint: disable=E0401
+#pylint: disable=C0103
 
 #E0401 -> Import
 #C0301 -> Too Long
+#C0103 -> Use "_"
 import logging
 
 import sys
@@ -41,12 +43,14 @@ from functions_topics import getTopic_manager,get_topic
     https://docs.python.org/es/3/library/shutil.html
     https://docs.python.org/3/library/tempfile.html
     https://docs.pylint.org/
+    https://www.section.io/engineering-education/how-to-perform-threading-timer-in-python/
     https://bobbyhadz.com/blog/python-check-if-object-exists-in-list-of-objects """
 
 #----------------------------
 #        Announcements
 #----------------------------
 class Announcements(IceFlix.Announcement):
+    """Class for announcements"""
     def __init__(self, annon_event, time_to_cancel):
         self.service_id_announc = str(uuid.uuid4())
         self.myFileService = None #this will set up at RunFileService
@@ -58,7 +62,7 @@ class Announcements(IceFlix.Announcement):
     def update_time(self, service_id):
         """This method is for update time of services"""
         self.myFileService.last_main_update[service_id] = time.time()
-        self.event.set()
+        self.annon_event.set()
 
 
     def announce(self, service, service_id, current=None):
@@ -67,11 +71,11 @@ class Announcements(IceFlix.Announcement):
         if not service_id in self.myFileService.main_list and service.ice_isA("::IceFlix::Main"):
             logging.warning("[Announcement] -> New main service has been detected with id %s", str(service_id))
             self.myFileService.main_list[service_id] = IceFlix.MainPrx.uncheckedCast(service) #To MainPrx
-            self.update_time(self, service_id)
+            self.update_time(service_id)
             self.time_to_cancel.cancel()
         elif service_id in self.myFileService.main_list:
             """Update time"""
-            self.update_time(self, service_id)
+            self.update_time(service_id)
         else:
             logging.warning("[Announcement] -> The Announcement with id %s has been ignored", str(service_id))
 
@@ -128,24 +132,24 @@ class FileService(IceFlix.FileService):
         main_prx = self.get_main_service()
         if main_prx is None:
             logging.warning("[FileService] -> There isn´t any main available")
-        
+
         auth_prx = main_prx.getAuthenticator()
         if auth_prx is None:
             logging.warning("[FileService] -> There isn´t any authenticator available")
-        
+
         if not auth_prx.isAuthorized(user_token):
             logging.warning("[FileService] -> There is a problem with your token")
             raise IceFlix.Unauthorized()
 
         ##Check if admin
         if fun_admin:
-           if not auth_prx.isAdmin(user_token):
-               logging.warning("[FileService] -> Your token is not for admin user")
-               raise IceFlix.Unauthorized()
+            if not auth_prx.isAdmin(user_token):
+                logging.warning("[FileService] -> Your token is not for admin user")
+                raise IceFlix.Unauthorized()
 
 
     def openFile(self, media_id, user_token, current=None):
-        """"Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it"""
+        """Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it"""
         """Can throws -> Unauthorized, WrongMediaId"""
         handler_prx = None
         self.check_list_methods(user_token,False)
@@ -178,7 +182,7 @@ class FileService(IceFlix.FileService):
         #Announced Files
         path_opt = self.path_resources + "/" + file_id
         self.media_list_hash[file_id] = path_opt
-        
+
         ###Check
         all_resources = list(self.media_list_hash.keys())
         self.annon_file_publish.announceFiles(all_resources,self.service_id_file)
@@ -201,7 +205,6 @@ class FileService(IceFlix.FileService):
             raise IceFlix.WrongMediaId(media_id)
 
 
-
 #----------------------------
 #        FileHandler
 #----------------------------
@@ -218,8 +221,8 @@ class FileHandler(IceFlix.FileHandler):
 
     def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
-        if self.get_main() is not None:
-            main_prx = self.get_main()
+        if self.get_main_service() is not None:
+            main_prx = self.get_main_service()
             if main_prx is not None:
                 auth_prx = main_prx.getAuthenticator()
                 if auth_prx.isAuthorized(userToken):
@@ -234,7 +237,7 @@ class FileHandler(IceFlix.FileHandler):
         if self.is_authorized(userToken):
             part = self.file.read(size)
         else:
-            logging.error("[FileHandler] -> There is a problem with user token")
+            logging.warning("[FileHandler] -> There is a problem with user token")
             raise IceFlix.Unauthorized()
         return part
 
@@ -245,18 +248,67 @@ class FileHandler(IceFlix.FileHandler):
         if self.is_authorized(userToken):
             self.file.close()
         else:
-            logging.error("[FileHandler] -> There is a problem with user token")
+            logging.warning("[FileHandler] -> There is a problem with user token")
             raise IceFlix.Unauthorized()
 
+
+#----------------------------
+#        Run File Service
+#----------------------------
 class RunFile(Ice.Application):
+    """Run File service"""
     def __init__(self):
-        self.service_run = str(uuid.uuid4())
+        self.id_service_run = str(uuid.uuid4())
+
         self.broker = None
+        self.servant = None
+        self.my_proxy = None
+        self.annon_publish = None
+        self.annon_my_files = None
+
+    ## see other option to improve
+    def annon_sent(self, current=None):
+        """Send announces every ten seconds"""
+        time_every_announce = 10
+        self.annon_publish.announce(self.my_proxy, self.id_service_run) #From Announcements
+        logging.warning("[Announces] -> Service was announced")
+        time_annon_sent = threading.Timer(time_every_announce, self.annon_sent) #thread
+        time_annon_sent.daemon = True
+        time_annon_sent.start() #thread running in background
+
+
+    def annon_files_others(self, current=None):
+        """Send announces from our files"""
+        time_every_announce_files = 20
+        our_files = list(self.servant.media_list_hash.keys())
+        #Announce Files
+        self.annon_my_files.announceFiles(our_files, self.id_service_run)
+        logging.warning("[Announces] -> Our files was announced")
+        time_annon_sent = threading.Timer(time_every_announce_files, self.annon_files_others) #thread
+        time_annon_sent.daemon = True
+        time_annon_sent.start() #thread running in background
+
+
+    def timer_kill(self, current=None):
+        """If we haven´t got any main shutdown service"""
+        logging.warning("[FileService] -> Service will shutdown, there isn´t any main")
+        self.broker.shutdown() # or better -> os._exit(os.EX_OK)
+
 
     def run(self, args):
         self.broker = self.communicator()
         adapter = self.broker.createObjectAdapterWithEndpoints("FileServiceAdapter", "tcp")
         adapter.activate()
+
+        #Topics
+        topic_annon = get_topic(getTopic_manager(self.broker), "Announcements")
+        topic_annon_for_files = get_topic(getTopic_manager(self.broker), "FileAvailabilityAnnounce")
+
+        #For publish
+        self.annon_publish = IceFlix.AnnouncementPrx.uncheckedCast(topic_annon.getPublisher())
+        self.annon_my_files = IceFlix.FileAvailabilityAnnouncePrx.uncheckedCast(topic_annon_for_files.getPublisher())
+
+
 
 if __name__ == '__main__':
     sys.exit(RunFile().main(sys.argv))
