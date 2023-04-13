@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+#pylint: disable=E1101
+#E1101 -> Module 'IceStorm'
+
 import logging #For logger
 import IceStorm
 
