@@ -1,3 +1,8 @@
 #!/usr/bin/env bash
 
-iceflix-fileservice --Ice.Config=configs/fileservice.config
+#iceflix-fileservice --Ice.Config=configs/fileservice.config
+
+echo "------------------------"
+echo "Running File service"
+echo "------------------------"
+python3 iceflix/file.py --Ice.Config=configs/fileservice.config

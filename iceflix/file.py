@@ -25,8 +25,12 @@ import shutil
 import tempfile
 
 #IceFlix
-import Ice
-import IceFlix
+try:
+    import Ice
+    Ice.loadSlice(os.path.join(os.path.dirname(__file__), "iceflix.ice"))
+    import IceFlix # pylint:disable=import-error
+except ImportError:
+    logging.error("[FileService] -> There is one error with import iceflix module")
 
 from functions_topics import getTopic_manager,get_topic
 
@@ -277,24 +281,24 @@ class RunFile(Ice.Application):
         self.my_resources = None
 
     ## see other option to improve
-    def annon_sent(self, time_every_announce, current=None):
+    def annon_sent(self, current=None):
         """Send announces every ten seconds"""
-        self.time_every_announce = time_every_announce
+        self.time_every_announce = 10
         self.annon_publish.announce(self.my_proxy, self.id_service_run) #From Announcements
         logging.warning("[Announces] -> Service was announced")
-        time_annon_sent = threading.Timer(self.time_every_announce, self.annon_sent) #thread
+        time_annon_sent = threading.Timer(self.time_every_announce, self.annon_sent()) #thread
         time_annon_sent.daemon = True
         time_annon_sent.start() #thread running in background
 
 
-    def annon_files_others(self, time_every_announce_files, current=None):
+    def annon_files_others(self, current=None):
         """Send announces from our files"""
-        self.time_every_announce_files = time_every_announce_files
+        self.time_every_announce_files = 20
         our_files = list(self.servant.media_list_hash.keys())
         #Announce Files
         self.annon_my_files.announceFiles(our_files, self.id_service_run)
         logging.warning("[Announces] -> Our files was announced")
-        time_annon_sent = threading.Timer(self.time_every_announce_files, self.annon_files_others) #thread
+        time_annon_sent = threading.Timer(self.time_every_announce_files, self.annon_files_others()) #thread
         time_annon_sent.daemon = True
         time_annon_sent.start() #thread running in background
 
@@ -309,7 +313,7 @@ class RunFile(Ice.Application):
         #Initialize
         time_v = 12
         self.broker = self.communicator()
-        adapter = self.broker.createObjectAdapterWithEndpoints("FileServiceAdapter", "tcp")
+        adapter = self.broker.createObjectAdapter("FileServiceAdapter")
         adapter.activate()
 
         #Topics
@@ -323,22 +327,26 @@ class RunFile(Ice.Application):
         #Timer for kill if not main
         time_to_cancel_run = threading.Timer(time_v, self.timer_kill)
         time_to_cancel_run.start()
-        annon_servant = Announcements(self.event_init, time_to_cancel_run); self.proxy_for_announce = adapter.addWithUUID(annon_servant)
+        annon_servant = Announcements(self.event_init, time_to_cancel_run)
+        self.proxy_for_announce = adapter.addWithUUID(annon_servant)
+        
         topic_annon.subscribeAndGetPublisher({}, self.proxy_for_announce) #Subscribe
+        logging.warning("[RunFile] -> Subscribed to topic announcements")
 
         #Set resources directory
         self.my_resources = self.broker.getProperties().getProperty("Directory")
         self.servant = FileService(self.my_resources, self.annon_my_files)
+        annon_servant.myFileService = self.servant #Check
 
         self.my_proxy = adapter.addWithUUID(self.servant)
         self.servant.obtain_my_proxy(self.my_proxy)
+        
 
-        annon_servant.myFileService = self.servant #Check
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy) #Cast
         self.event_init.wait(time_v)
         if self.event_init.is_set():
-            self.annon_sent(10) #Announce (10 seconds)
-            self.annon_files_others(20) #FileAvailabityAnnounce (20 seconds)
+            self.annon_sent() #Announce (10 seconds)
+            self.annon_files_others() #FileAvailabityAnnounce (20 seconds)
 
         self.shutdownOnInterrupt()
         self.broker.waitForShutdown()

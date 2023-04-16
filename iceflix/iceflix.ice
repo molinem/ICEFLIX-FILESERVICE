@@ -41,6 +41,10 @@
         void removeFile(string mediaId, string adminToken) throws Unauthorized, WrongMediaId;
     };
 
+    interface FileAvailabilityAnnounce {
+        void announceFiles(StringList mediaIds, string serviceId);
+    };
+
     ///////////// Catalog service related structs and interfaces /////////////
     // Media info
     struct MediaInfo {
