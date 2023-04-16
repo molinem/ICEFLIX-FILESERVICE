@@ -4,10 +4,12 @@
 #pylint: disable=unused-argument
 #pylint: disable=E0401
 #pylint: disable=C0103
+#pylint: disable=W1203
 
 #E0401 -> Import
 #C0301 -> Too Long
 #C0103 -> Use "_"
+#W1203 -> Use % (formatting in logging functions)
 import logging
 
 import sys
