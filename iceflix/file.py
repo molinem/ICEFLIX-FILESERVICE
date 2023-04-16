@@ -89,10 +89,11 @@ class Announcements(IceFlix.Announcement):
 #----------------------------
 class FileService(IceFlix.FileService):
 
-    def __init__(self, path_resources, annon_file_publish):
+    def __init__(self, path_resources, annon_file_publish, adapter):
         """Initialize parameters"""
         self.service_id_file = str(uuid.uuid4())
         self.proxy = None
+        self.adapter = adapter
 
         self.path_resources = path_resources
         self.annon_file_publish = annon_file_publish
@@ -283,22 +284,22 @@ class RunFile(Ice.Application):
     ## see other option to improve
     def annon_sent(self, current=None):
         """Send announces every ten seconds"""
-        self.time_every_announce = 10
+        time_every_announce = 10
         self.annon_publish.announce(self.my_proxy, self.id_service_run) #From Announcements
         logging.warning("[Announces] -> Service was announced")
-        time_annon_sent = threading.Timer(self.time_every_announce, self.annon_sent()) #thread
+        time_annon_sent = threading.Timer(time_every_announce, self.annon_sent) #thread
         time_annon_sent.daemon = True
         time_annon_sent.start() #thread running in background
 
 
     def annon_files_others(self, current=None):
         """Send announces from our files"""
-        self.time_every_announce_files = 20
+        time_every_announce_files = 20
         our_files = list(self.servant.media_list_hash.keys())
         #Announce Files
         self.annon_my_files.announceFiles(our_files, self.id_service_run)
         logging.warning("[Announces] -> Our files was announced")
-        time_annon_sent = threading.Timer(self.time_every_announce_files, self.annon_files_others()) #thread
+        time_annon_sent = threading.Timer(time_every_announce_files, self.annon_files_others) #thread
         time_annon_sent.daemon = True
         time_annon_sent.start() #thread running in background
 
@@ -335,12 +336,12 @@ class RunFile(Ice.Application):
 
         #Set resources directory
         self.my_resources = self.broker.getProperties().getProperty("Directory")
-        self.servant = FileService(self.my_resources, self.annon_my_files)
+        self.servant = FileService(self.my_resources, self.annon_my_files, adapter)
         annon_servant.myFileService = self.servant #Check
 
         self.my_proxy = adapter.addWithUUID(self.servant)
         self.servant.obtain_my_proxy(self.my_proxy)
-        
+
 
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy) #Cast
         self.event_init.wait(time_v)
