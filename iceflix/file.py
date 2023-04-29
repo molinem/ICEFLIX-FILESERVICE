@@ -59,39 +59,52 @@ MAGENTA = "\033[35m"
     https://www.section.io/engineering-education/how-to-perform-threading-timer-in-python/
     https://bobbyhadz.com/blog/python-check-if-object-exists-in-list-of-objects """
 
+
 #----------------------------
-#        Announcements
+#        FileHandler
 #----------------------------
-class Announcements(IceFlix.Announcement):
-    """Class for announcements"""
-    def __init__(self, annon_event, time_to_cancel):
-        self.service_id_announc = str(uuid.uuid4())
-        self.myFileService = None #this will set up at RunFileService
+class FileHandler(IceFlix.FileHandler):
+    """When a user requests to open a file, the service will create a servant to handle its possible download"""
 
-        self.annon_event = annon_event
-        self.time_to_cancel = time_to_cancel
+    def __init__(self, path):
+        """Initialize parameters for open file"""
+        self.service_id_file_handler = str(uuid.uuid4())
 
-
-    def update_time(self, service_id):
-        """This method is for update time of services"""
-        self.myFileService.last_main_update[service_id] = time.time()
-        self.annon_event.set()
+        self.path = path
+        self.file = open(self.path, 'rb')
 
 
-    def announce(self, service, service_id, current=None):
-        """This method is for check services and update list of services if we haven`t add yet"""
-        logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} Id service = {WHITE}%s', str(service_id))
-        if not service_id in self.myFileService.main_list and service.ice_isA("::IceFlix::Main"):
-            logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} New main service has been detected with id {WHITE}%s', str(service_id))
-            self.myFileService.main_list[service_id] = IceFlix.MainPrx.uncheckedCast(service) #To MainPrx
-            self.update_time(service_id)
-            self.time_to_cancel.cancel()
-        elif service_id in self.myFileService.main_list:
-            """Update time"""
-            self.update_time(service_id)
+    def is_authorized(self, userToken, current=None):
+        """Returns True if the userToken is authorized, False otherwise"""
+        if self.get_main_service() is not None:
+            main_prx = self.get_main_service()
+            if main_prx is not None:
+                auth_prx = main_prx.getAuthenticator()
+                if auth_prx.isAuthorized(userToken):
+                    return True
+        return False
+
+
+    def receive(self, size, userToken, current=None):
+        """Receive the specified number of bytes from the file"""
+        """Can throws -> Unauthorized"""
+        part = None
+        if self.is_authorized(userToken):
+            part = self.file.read(size)
         else:
-            logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} The Announcement with id {WHITE}%s {CIAN}has been ignored{WHITE}', str(service_id))
+            logging.warning(f'{MAGENTA}[FileHandler_Receive] {YELLOW}-> {CIAN}There is a problem with user token')
+            raise IceFlix.Unauthorized()
+        return part
 
+
+    def close(self, userToken, current=None):
+        """Notify the server that the proxy for this file, won´t be used and will be removed"""
+        """Can throws -> Unauthorized"""
+        if self.is_authorized(userToken):
+            self.file.close()
+        else:
+            logging.warning(f'{MAGENTA}[FileHandler_Close] {YELLOW}-> {CIAN}There is a problem with user token')
+            raise IceFlix.Unauthorized()
 
 
 #----------------------------
@@ -199,7 +212,6 @@ class FileService(IceFlix.FileService):
         path_opt = self.path_resources + "/" + file_id
         self.media_list_hash[file_id] = path_opt
 
-        ###Check
         all_resources = list(self.media_list_hash.keys())
         self.annon_file_publish.announceFiles(all_resources,self.service_id_file)
         logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}Files has been announced')
@@ -228,50 +240,37 @@ class FileService(IceFlix.FileService):
 
 
 #----------------------------
-#        FileHandler
+#        Announcements
 #----------------------------
-class FileHandler(IceFlix.FileHandler):
-    """When a user requests to open a file, the service will create a servant to handle its possible download"""
+class Announcements(IceFlix.Announcement):
+    """Class for announcements"""
+    def __init__(self, annon_event, time_to_cancel):
+        self.service_id_announc = str(uuid.uuid4())
+        self.myFileService = None #this will set up at RunFileService
 
-    def __init__(self, path):
-        """Initialize parameters for open file"""
-        self.service_id_file_handler = str(uuid.uuid4())
-
-        self.path = path
-        self.file = open(self.path, 'rb')
-
-
-    def is_authorized(self, userToken, current=None):
-        """Returns True if the userToken is authorized, False otherwise"""
-        if self.get_main_service() is not None:
-            main_prx = self.get_main_service()
-            if main_prx is not None:
-                auth_prx = main_prx.getAuthenticator()
-                if auth_prx.isAuthorized(userToken):
-                    return True
-        return False
+        self.annon_event = annon_event
+        self.time_to_cancel = time_to_cancel
 
 
-    def receive(self, size, userToken, current=None):
-        """Receive the specified number of bytes from the file"""
-        """Can throws -> Unauthorized"""
-        part = None
-        if self.is_authorized(userToken):
-            part = self.file.read(size)
+    def update_time(self, service_id):
+        """This method is for update time of services"""
+        self.myFileService.last_main_update[service_id] = time.time()
+        self.annon_event.set()
+
+
+    def announce(self, service, service_id, current=None):
+        """This method is for check services and update list of services if we haven`t add yet"""
+        logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} Id service = {WHITE}%s', str(service_id))
+        if not service_id in self.myFileService.main_list and service.ice_isA("::IceFlix::Main"):
+            logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} New main service has been detected with id {WHITE}%s', str(service_id))
+            self.myFileService.main_list[service_id] = IceFlix.MainPrx.uncheckedCast(service) #To MainPrx
+            self.update_time(service_id)
+            self.time_to_cancel.cancel()
+        elif service_id in self.myFileService.main_list:
+            """Update time"""
+            self.update_time(service_id)
         else:
-            logging.warning(f'{MAGENTA}[FileHandler_Receive] {YELLOW}-> {CIAN}There is a problem with user token')
-            raise IceFlix.Unauthorized()
-        return part
-
-
-    def close(self, userToken, current=None):
-        """Notify the server that the proxy for this file, won´t be used and will be removed"""
-        """Can throws -> Unauthorized"""
-        if self.is_authorized(userToken):
-            self.file.close()
-        else:
-            logging.warning(f'{MAGENTA}[FileHandler_Close] {YELLOW}-> {CIAN}There is a problem with user token')
-            raise IceFlix.Unauthorized()
+            logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} The Announcement with id {WHITE}%s {CIAN}has been ignored{WHITE}', str(service_id))
 
 
 #----------------------------
@@ -340,14 +339,14 @@ class RunFile(Ice.Application):
         time_to_cancel_run.start()
         annon_servant = Announcements(self.event_init, time_to_cancel_run)
         self.proxy_for_announce = adapter.addWithUUID(annon_servant)
-        
+       
         topic_annon.subscribeAndGetPublisher({}, self.proxy_for_announce) #Subscribe
         logging.warning(f'{GREEN}[RunFile] {YELLOW}-> {CIAN}Subscribed to topic announcements{WHITE}')
 
         #Set resources directory
         self.my_resources = self.broker.getProperties().getProperty("Directory")
         self.servant = FileService(self.my_resources, self.annon_my_files, adapter)
-        annon_servant.myFileService = self.servant #Check
+        annon_servant.myFileService = self.servant
 
         self.my_proxy = adapter.addWithUUID(self.servant)
         self.servant.obtain_my_proxy(self.my_proxy)
