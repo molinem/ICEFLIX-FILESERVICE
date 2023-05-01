@@ -92,7 +92,7 @@ class FileService(IceFlix.FileService):
                 file_id = file_object.read()
                 file_hash = hashlib.sha256(file_id).hexdigest()
                 self.media_list_hash[file_hash] = path
-
+    
 
     def get_main_service(self, current=None):
         """Obtain one main services from list and check if is available"""
@@ -100,7 +100,7 @@ class FileService(IceFlix.FileService):
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any main available previusly stored')
             return None
         random_main = random.choice(list(self.main_list.keys())) #Select random main service from list
-        
+
         if abs(self.last_main_update[random_main] - time.time()) > 12:
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any main available that aren´t expired')
             self.main_list.pop(random_main) #out to list
@@ -118,22 +118,14 @@ class FileService(IceFlix.FileService):
         main_prx = self.get_main_service()
         if main_prx is None:
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any main available')
-        ###########################################################################################################
-        try:
-            main_prx.ice_ping()
-            logging.warning("El proxy responde a los pings")
-        except Exception as e:
-            logging.warning("El proxy no responde a los pings")
 
         auth_prx = main_prx.getAuthenticator()
         if auth_prx is None:
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available')
 
-        """
         if not auth_prx.isAuthorized(user_token):
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There is a problem with your token')
             raise IceFlix.Unauthorized()
-        """
 
         ##Check if admin
         if fun_admin:
@@ -143,8 +135,7 @@ class FileService(IceFlix.FileService):
 
 
     def openFile(self, media_id, user_token, current=None):
-        """Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it"""
-        """Can throws -> Unauthorized, WrongMediaId"""
+        """Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it - Can throws -> Unauthorized, WrongMediaId"""
         handler_prx = None
         self.check_list_methods(user_token,False)
         if self.exist_media_dictionary(media_id):
@@ -158,8 +149,7 @@ class FileService(IceFlix.FileService):
 
 
     def uploadFile(self, uploader, admin_token, current=None):
-        """Given the administrator token and a proxy for uploading files, it will store it in the directory and returns its identifier"""
-        """Can throws -> Unauthorized"""
+        """Given the administrator token and a proxy for uploading files, it will store it in the directory and returns its identifier - Can throws -> Unauthorized"""
         size_for_section = 50
         id_file = None
         self.check_list_methods(admin_token,True)
@@ -195,8 +185,7 @@ class FileService(IceFlix.FileService):
 
 
     def removeFile(self, media_id, admin_token, current=None):
-        """Give the identifier and the administrator token"""
-        """Can throws -> Unauthorized, WrongMediaId"""
+        """Give the identifier and the administrator token - Can throws -> Unauthorized, WrongMediaId"""
         self.check_list_methods(admin_token,True)
         if self.exist_media_dictionary(media_id):
             os.remove(self.media_list_hash[media_id])
@@ -231,38 +220,34 @@ class FileHandler(IceFlix.FileHandler):
 
     def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
-        if self.get_main_service() is not None:
-            main_prx = self.get_main_service()
+        if FileService.get_main_service() is not None:
+            main_prx = FileService.get_main_service()
             if main_prx is not None:
                 auth_prx = main_prx.getAuthenticator()
                 if auth_prx.isAuthorized(userToken):
                     return True
         return False
 
-    def setMain(self, give_me_main):
-        self.main = give_me_main
-
 
     def receive(self, size, userToken, current=None):
-        """Receive the specified number of bytes from the file"""
-        """Can throws -> Unauthorized"""
+        """Receive the specified number of bytes from the file - Can throws -> Unauthorized"""
         part = None
         if self.is_authorized(userToken):
             part = self.file.read(size)
         else:
-            logging.warning(f'{MAGENTA}[FileHandler_Receive] {YELLOW}-> {CIAN}There is a problem with user token')
+            logging.warning(f'{MAGENTA}[FileHandler_Receive] {YELLOW}-> {CIAN}There is a problem with user token not is administrator')
             raise IceFlix.Unauthorized()
         return part
 
 
     def close(self, userToken, current=None):
-        """Notify the server that the proxy for this file, won´t be used and will be removed"""
-        """Can throws -> Unauthorized"""
+        """Notify the server that the proxy for this file, won´t be used and will be removed - Can throws -> Unauthorized"""
         if self.is_authorized(userToken):
             self.file.close()
         else:
             logging.warning(f'{MAGENTA}[FileHandler_Close] {YELLOW}-> {CIAN}There is a problem with user token')
             raise IceFlix.Unauthorized()
+
 
 #----------------------------
 #        Announcements
@@ -366,7 +351,7 @@ class RunFile(Ice.Application):
         time_to_cancel_run.start()
         annon_servant = Announcements(self.event_init, time_to_cancel_run)
         self.proxy_for_announce = adapter.addWithUUID(annon_servant)
-       
+
         topic_annon.subscribeAndGetPublisher({}, self.proxy_for_announce) #Subscribe
         logging.warning(f'{GREEN}[RunFile] {YELLOW}-> {CIAN}Subscribed to topic announcements{WHITE}')
 
@@ -382,13 +367,14 @@ class RunFile(Ice.Application):
         self.event_init.wait(time_v)
         #
         #logging.warning(self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh"))
-        
+        """
         handler = None
         handler = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
         logging.warning("Handler: %s ",str(handler))
         self.servant.uploadFile(handler, "hhhhh")
         
         #self.servant.removeFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
+        """
 
         if self.event_init.is_set():
             self.annon_sent() #Announce (10 seconds)
