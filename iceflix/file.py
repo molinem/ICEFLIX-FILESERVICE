@@ -77,8 +77,8 @@ class FileService(IceFlix.FileService):
         self.path_resources = path_resources
         self.annon_file_publish = annon_file_publish
 
-        self.last_main_update = {}
-        self.main_list = {}
+        self.last_authenticator_update = {}
+        self.authenticator_list = {}
         self.media_list_hash = {}
 
         self.make_hash_medias()
@@ -94,18 +94,18 @@ class FileService(IceFlix.FileService):
                 self.media_list_hash[file_hash] = path
     
 
-    def get_main_service(self, current=None):
-        """Obtain one main services from list and check if is available"""
-        if not self.main_list:
-            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any main available previusly stored')
+    def get_authenticator_service(self, current=None):
+        """Obtain one authenticator from list and check if is available"""
+        if not self.authenticator_list:
+            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available previusly stored')
             return None
-        random_main = random.choice(list(self.main_list.keys())) #Select random main service from list
+        random_authenticator = random.choice(list(self.authenticator_list.keys())) #Select random authenticator service from list
 
-        if abs(self.last_main_update[random_main] - time.time()) > 12:
-            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any main available that aren´t expired')
-            self.main_list.pop(random_main) #out to list
+        if abs(self.last_authenticator_update[random_authenticator] - time.time()) > 12:
+            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available they are expired')
+            self.authenticator_list.pop(random_authenticator) #out to list
             return None
-        return self.main_list[random_main]
+        return self.authenticator_list[random_authenticator]
 
 
     def exist_media_dictionary(self, media_id, current=None):
@@ -115,11 +115,7 @@ class FileService(IceFlix.FileService):
 
     def check_list_methods(self, user_token, fun_admin, current=None):
         """For check if there is some problem, used in openFile, uploadFile, removeFile"""
-        main_prx = self.get_main_service()
-        if main_prx is None:
-            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any main available')
-
-        auth_prx = main_prx.getAuthenticator()
+        auth_prx = self.get_authenticator_service()
         if auth_prx is None:
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available')
 
@@ -157,7 +153,7 @@ class FileService(IceFlix.FileService):
         with tempfile.NamedTemporaryFile(delete=False) as temp_file: #Autoclose
             while 1:
                 try:
-                    receive_data = uploader.receive(size_for_section,admin_token)
+                    receive_data = uploader.receive(size_for_section)
                 except Ice.Exception:
                     logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}There is an error with receive data but it return id_file')
                     return id_file
@@ -172,7 +168,7 @@ class FileService(IceFlix.FileService):
             id_file = hashlib.sha256(temp_file.read()).hexdigest()
             shutil.copyfile(temp_file.name, os.path.join(self.path_resources, id_file))
             os.unlink(temp_file.name) #remove temp file
-            uploader.close(admin_token)
+            uploader.close()
 
         #Announced Files
         path_opt = os.path.join(self.path_resources,id_file)
@@ -215,13 +211,12 @@ class FileHandler(IceFlix.FileHandler):
 
         self.path = path
         self.file = open(self.path, 'rb')
-        self.main = None
 
 
-    def is_authorized(self, userToken, current=None):
+    def is_authorized(self, userToken, current=None): ############################################Cambiar
         """Returns True if the userToken is authorized, False otherwise"""
-        if FileService.get_main_service() is not None:
-            main_prx = FileService.get_main_service()
+        if FileService.get_authenticator_service() is not None:
+            main_prx = FileService.get_authenticator_service()
             if main_prx is not None:
                 auth_prx = main_prx.getAuthenticator()
                 if auth_prx.isAuthorized(userToken):
@@ -241,12 +236,37 @@ class FileHandler(IceFlix.FileHandler):
 
 
     def close(self, userToken, current=None):
-        """Notify the server that the proxy for this file, won´t be used and will be removed - Can throws -> Unauthorized"""
+        """Close File and check if is authorized - Can throws -> Unauthorized"""
         if self.is_authorized(userToken):
             self.file.close()
         else:
             logging.warning(f'{MAGENTA}[FileHandler_Close] {YELLOW}-> {CIAN}There is a problem with user token')
             raise IceFlix.Unauthorized()
+
+
+#----------------------------
+#        FileUploader
+#----------------------------
+class FileUploader(IceFlix.FileUploader):
+    def __init__(self, path):
+        """Initialize parameters"""
+        self.service_id_file_uploader = str(uuid.uuid4())
+
+        self.path = path
+        self.file = open(self.path, 'rb')
+
+
+    def receive(self, size, current=None):
+        """Receive the specified number of bytes from the file"""
+        part = None
+        part = self.file.read(size)
+        
+        return part
+
+
+    def close(self, userToken, current=None):
+        """Close File"""
+        self.file.close()
 
 
 #----------------------------
@@ -264,21 +284,21 @@ class Announcements(IceFlix.Announcement):
 
     def update_time(self, service_id):
         """This method is for update time of services"""
-        self.myFileService.last_main_update[service_id] = time.time()
+        self.myFileService.last_authenticator_update[service_id] = time.time()
         self.annon_event.set()
 
 
     def announce(self, service, service_id, current=None):
         """This method is for check services and update list of services if we haven`t add yet"""
         logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} Id service = {WHITE}%s', str(service_id))
-        if service_id in self.myFileService.main_list:
+        if service_id in self.myFileService.authenticator_list:
             """Update time"""
-            self.myFileService.last_main_update[service_id] = time.time()
+            self.myFileService.last_authenticator_update[service_id] = time.time()
             self.annon_event.set()
 
-        if not service_id in self.myFileService.main_list and service.ice_isA("::IceFlix::Main"):
-            logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} New main service has been detected with id {WHITE}%s', str(service_id))
-            self.myFileService.main_list[service_id] = IceFlix.MainPrx.uncheckedCast(service) #To MainPrx
+        if not service_id in self.myFileService.authenticator_list and service.ice_isA("::IceFlix::Authenticator"):
+            logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} New authenticator service has been detected with id {WHITE}%s', str(service_id))
+            self.myFileService.authenticator_list[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(service) #To AuthenticatorPrx
             self.update_time(service_id)
             self.time_to_cancel.cancel()
         else:
@@ -326,8 +346,8 @@ class RunFile(Ice.Application):
 
 
     def timer_kill(self, current=None):
-        """If we haven´t got any main shutdown service"""
-        logging.warning(f'{WHITE}[Announces] {YELLOW}-> {CIAN}Service will shutdown, there isn´t any main')
+        """If we haven´t got any authenticator shutdown service"""
+        logging.warning(f'{WHITE}[Announces] {YELLOW}-> {CIAN}Service will shutdown, there isn´t any authenticator')
         self.broker.shutdown() # or better -> os._exit(os.EX_OK)
 
 
@@ -367,14 +387,14 @@ class RunFile(Ice.Application):
         self.event_init.wait(time_v)
         #
         #logging.warning(self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh"))
-        """
-        handler = None
-        handler = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        logging.warning("Handler: %s ",str(handler))
-        self.servant.uploadFile(handler, "hhhhh")
+        
+        uploader = None
+        uploader = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
+        logging.warning("Handler: %s ",str(uploader))
+        self.servant.uploadFile(uploader, "hhhhh")
         
         #self.servant.removeFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        """
+        
 
         if self.event_init.is_set():
             self.annon_sent() #Announce (10 seconds)
