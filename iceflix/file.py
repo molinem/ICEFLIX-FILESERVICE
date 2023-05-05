@@ -92,7 +92,7 @@ class FileService(IceFlix.FileService):
                 file_id = file_object.read()
                 file_hash = hashlib.sha256(file_id).hexdigest()
                 self.media_list_hash[file_hash] = path
-    
+
 
     def get_authenticator_service(self, current=None):
         """Obtain one authenticator from list and check if is available"""
@@ -248,6 +248,7 @@ class FileHandler(IceFlix.FileHandler):
 #        FileUploader
 #----------------------------
 class FileUploader(IceFlix.FileUploader):
+    """Class for upload files"""
     def __init__(self, path):
         """Initialize parameters"""
         self.service_id_file_uploader = str(uuid.uuid4())
@@ -260,7 +261,7 @@ class FileUploader(IceFlix.FileUploader):
         """Receive the specified number of bytes from the file"""
         part = None
         part = self.file.read(size)
-        
+
         return part
 
 
@@ -385,16 +386,18 @@ class RunFile(Ice.Application):
 
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy) #Cast
         self.event_init.wait(time_v)
-        #
+        #----------------------------------------
         #logging.warning(self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh"))
-        
+        """
         uploader = None
         uploader = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        logging.warning("Handler: %s ",str(uploader))
-        self.servant.uploadFile(uploader, "hhhhh")
+        logging.warning("Uploader: %s ",str(uploader))
+
+        """
+        #self.servant.uploadFile(uploader, "hhhhh")
         
         #self.servant.removeFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        
+        #----------------------------------------
 
         if self.event_init.is_set():
             self.annon_sent() #Announce (10 seconds)
