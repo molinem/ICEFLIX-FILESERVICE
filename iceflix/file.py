@@ -45,6 +45,9 @@ MAGENTA = "\033[35m"
 
 logging.basicConfig(level=logging.WARNING)
 
+last_authenticator_update = {}
+authenticator_list = {}
+
 """Sources:
     https://www.sqlitetutorial.net/sqlite-python/sqlite-python-select/
     https://uclm-esi.github.io/ssdd-lab/python_stdlib.html
@@ -61,7 +64,6 @@ logging.basicConfig(level=logging.WARNING)
     https://www.section.io/engineering-education/how-to-perform-threading-timer-in-python/
     https://bobbyhadz.com/blog/python-check-if-object-exists-in-list-of-objects """
 
-
 #----------------------------
 #        FileService
 #----------------------------
@@ -77,8 +79,6 @@ class FileService(IceFlix.FileService):
         self.path_resources = path_resources
         self.annon_file_publish = annon_file_publish
 
-        self.last_authenticator_update = {}
-        self.authenticator_list = {}
         self.media_list_hash = {}
 
         self.make_hash_medias()
@@ -96,16 +96,18 @@ class FileService(IceFlix.FileService):
 
     def get_authenticator_service(self, current=None):
         """Obtain one authenticator from list and check if is available"""
-        if not self.authenticator_list:
+        global last_authenticator_update
+        global authenticator_list
+        if not authenticator_list:
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available previusly stored')
             return None
-        random_authenticator = random.choice(list(self.authenticator_list.keys())) #Select random authenticator service from list
+        random_authenticator = random.choice(list(authenticator_list.keys())) #Select random authenticator service from list
 
-        if abs(self.last_authenticator_update[random_authenticator] - time.time()) > 12:
+        if abs(last_authenticator_update[random_authenticator] - time.time()) > 12:
             logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available they are expired')
-            self.authenticator_list.pop(random_authenticator) #out to list
+            authenticator_list.pop(random_authenticator) #out to list
             return None
-        return self.authenticator_list[random_authenticator]
+        return authenticator_list[random_authenticator]
 
 
     def exist_media_dictionary(self, media_id, current=None):
@@ -164,7 +166,6 @@ class FileService(IceFlix.FileService):
             temp_file.flush()
             temp_file.seek(0)
 
-
             id_file = hashlib.sha256(temp_file.read()).hexdigest()
             shutil.copyfile(temp_file.name, os.path.join(self.path_resources, id_file))
             os.unlink(temp_file.name) #remove temp file
@@ -188,6 +189,7 @@ class FileService(IceFlix.FileService):
             self.media_list_hash.pop(media_id)
 
             all_resources_up = list(self.media_list_hash.keys())
+            logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}The media has been removed')
             self.annon_file_publish.announceFiles(all_resources_up,self.service_id_file)
         else:
             logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}The media id doesn´t exist in our records')
@@ -213,14 +215,27 @@ class FileHandler(IceFlix.FileHandler):
         self.file = open(self.path, 'rb')
 
 
-    def is_authorized(self, userToken, current=None): ############################################Cambiar
+    def get_authenticator_hand(self, current=None):
+        """Obtain one authenticator"""
+        global last_authenticator_update
+        global authenticator_list
+        if not authenticator_list:
+            logging.warning(f'{WHITE}[FileHandler] {YELLOW}-> {CIAN} There isn´t any authenticator available previusly stored')
+            return None
+        random_authenticator_hand = random.choice(list(authenticator_list.keys()))
+        if abs(last_authenticator_update[random_authenticator_hand] - time.time()) > 12:
+            logging.warning(f'{WHITE}[FileHandler] {YELLOW}-> {CIAN} There isn´t any authenticator available they are expired')
+            authenticator_list.pop(random_authenticator_hand)
+            return None
+        return authenticator_list[random_authenticator_hand]
+
+
+    def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
-        if FileService.get_authenticator_service() is not None:
-            main_prx = FileService.get_authenticator_service()
-            if main_prx is not None:
-                auth_prx = main_prx.getAuthenticator()
-                if auth_prx.isAuthorized(userToken):
-                    return True
+        auth_pr = self.get_authenticator_hand
+        if auth_pr is not None:
+            if auth_pr.isAuthorized(userToken):
+                return True
         return False
 
 
@@ -277,29 +292,27 @@ class Announcements(IceFlix.Announcement):
     """Class for announcements"""
     def __init__(self, annon_event, time_to_cancel):
         self.service_id_announc = str(uuid.uuid4())
-        self.myFileService = None #this will set up at RunFileService
-
         self.annon_event = annon_event
         self.time_to_cancel = time_to_cancel
 
 
     def update_time(self, service_id):
+        global last_authenticator_update
         """This method is for update time of services"""
-        self.myFileService.last_authenticator_update[service_id] = time.time()
+        last_authenticator_update[service_id] = time.time()
         self.annon_event.set()
 
 
     def announce(self, service, service_id, current=None):
         """This method is for check services and update list of services if we haven`t add yet"""
+        global authenticator_list
         logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} Id service = {WHITE}%s', str(service_id))
-        if service_id in self.myFileService.authenticator_list:
-            """Update time"""
-            self.myFileService.last_authenticator_update[service_id] = time.time()
-            self.annon_event.set()
-
-        if not service_id in self.myFileService.authenticator_list and service.ice_isA("::IceFlix::Authenticator"):
+        if service_id in authenticator_list:
+            self.update_time(service_id)
+        if not service_id in authenticator_list and service.ice_isA("::IceFlix::Authenticator"):
             logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} New authenticator service has been detected with id {WHITE}%s', str(service_id))
-            self.myFileService.authenticator_list[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(service) #To AuthenticatorPrx
+            authenticator_list[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(service) #To AuthenticatorPrx
+
             self.update_time(service_id)
             self.time_to_cancel.cancel()
         else:
@@ -382,21 +395,20 @@ class RunFile(Ice.Application):
 
         self.my_proxy = adapter.addWithUUID(self.servant)
         self.servant.obtain_my_proxy(self.my_proxy)
-        annon_servant.myFileService = self.servant
 
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy) #Cast
         self.event_init.wait(time_v)
-        #----------------------------------------
-        #logging.warning(self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh"))
-        """
-        uploader = None
-        uploader = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        logging.warning("Uploader: %s ",str(uploader))
 
+        #----------------------------------------
         """
-        #self.servant.uploadFile(uploader, "hhhhh")
+        #logging.warning(self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh"))
         
-        #self.servant.removeFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
+        prox_open_file = None
+        prox_open_file = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
+        logging.warning("prox_open_file: %s ",str(prox_open_file))
+
+        self.servant.removeFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
+        """
         #----------------------------------------
 
         if self.event_init.is_set():
