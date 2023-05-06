@@ -5,11 +5,14 @@
 #pylint: disable=E0401
 #pylint: disable=C0103
 #pylint: disable=W1203
+#pylint: disable=W0602
 
-#E0401 -> Import
+#E0401 -> Error with import
 #C0301 -> Too Long
 #C0103 -> Use "_"
 #W1203 -> Use % (formatting in logging functions)
+#W0602 -> Use directly global variables
+
 import logging
 
 import sys
@@ -232,7 +235,7 @@ class FileHandler(IceFlix.FileHandler):
 
     def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
-        auth_pr = self.get_authenticator_hand
+        auth_pr = self.get_authenticator_hand()
         if auth_pr is not None:
             if auth_pr.isAuthorized(userToken):
                 return True
@@ -291,6 +294,7 @@ class FileUploader(IceFlix.FileUploader):
 class Announcements(IceFlix.Announcement):
     """Class for announcements"""
     def __init__(self, annon_event, time_to_cancel):
+        """Initialize class parameters"""
         self.service_id_announc = str(uuid.uuid4())
         self.annon_event = annon_event
         self.time_to_cancel = time_to_cancel
@@ -396,7 +400,7 @@ class RunFile(Ice.Application):
         self.my_proxy = adapter.addWithUUID(self.servant)
         self.servant.obtain_my_proxy(self.my_proxy)
 
-        self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy) #Cast
+        self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy)
         self.event_init.wait(time_v)
 
         #----------------------------------------
