@@ -13,9 +13,8 @@ def setup_logging():
         format=LOG_FORMAT,
     )
 
-
 def file_service():
-    """CLI command."""
+    """Handles the `streamingservice` CLI command."""
     setup_logging()
     logging.info("File service")
     app = RunFile()
