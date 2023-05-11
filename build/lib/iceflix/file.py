@@ -37,7 +37,8 @@ try:
 except ImportError:
     logging.error("[FileService] -> There is one error with import iceflix module")
 
-from functions_topics import getTopic_manager,get_topic
+#from functions_topics import getTopic_manager,get_topic
+from iceflix import functions_topics
 
 YELLOW = "\033[93m"
 GREEN = "\033[32m"
@@ -83,7 +84,6 @@ class FileService(IceFlix.FileService):
         self.annon_file_publish = annon_file_publish
 
         self.media_list_hash = {}
-
         self.make_hash_medias()
 
 
@@ -121,31 +121,37 @@ class FileService(IceFlix.FileService):
     def check_list_methods(self, user_token, fun_admin, current=None):
         """For check if there is some problem, used in openFile, uploadFile, removeFile"""
         auth_prx = self.get_authenticator_service()
-        if auth_prx is None:
-            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There isn´t any authenticator available')
+        is_correct = True
 
-        if not auth_prx.isAuthorized(user_token):
-            logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There is a problem with your token')
-            raise IceFlix.Unauthorized()
+        if auth_prx is not None:
+            if not auth_prx.isAuthorized(user_token):
+                logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} There is a problem with your token')
+                raise IceFlix.Unauthorized()
+        else:
+            is_correct = False
 
         ##Check if admin
-        if fun_admin:
+        if is_correct and fun_admin:
             if not auth_prx.isAdmin(user_token):
                 logging.warning(f'{WHITE}[FileService] {YELLOW}-> {CIAN} Your token is not for admin user')
                 raise IceFlix.Unauthorized()
+        return is_correct
 
 
     def openFile(self, media_id, user_token, current=None):
         """Given the media identifier, it will return a proxy to the file handler (FileHandler), which will enable downloading it - Can throws -> Unauthorized, WrongMediaId"""
         handler_prx = None
-        self.check_list_methods(user_token,False)
-        if self.exist_media_dictionary(media_id):
-            file_hand = FileHandler(self.media_list_hash.get(media_id))
-            file_hand_prx = self.adapter.addWithUUID(file_hand)
-            handler_prx = IceFlix.FileHandlerPrx.uncheckedCast(file_hand_prx) #From ObjectPrx to FileHandlerPrx
+        correct = self.check_list_methods(user_token,False)
+        if correct:
+            if self.exist_media_dictionary(media_id):
+                file_hand = FileHandler(self.media_list_hash.get(media_id))
+                file_hand_prx = self.adapter.addWithUUID(file_hand)
+                handler_prx = IceFlix.FileHandlerPrx.uncheckedCast(file_hand_prx) #From ObjectPrx to FileHandlerPrx
+            else:
+                logging.warning(f'{WHITE}[FileService_OpenFile] {YELLOW}-> {CIAN}The media id doesn´t exist in our records')
+                raise IceFlix.WrongMediaId(media_id)
         else:
-            logging.warning(f'{WHITE}[FileService_OpenFile] {YELLOW}-> {CIAN}The media id doesn´t exist in our records')
-            raise IceFlix.WrongMediaId(media_id)
+            logging.warning(f'{WHITE}[FileService_OpenFile] {YELLOW}-> {CIAN}We can´t check security with authenticator service')
         return handler_prx
 
 
@@ -153,50 +159,55 @@ class FileService(IceFlix.FileService):
         """Given the administrator token and a proxy for uploading files, it will store it in the directory and returns its identifier - Can throws -> Unauthorized"""
         size_for_section = 50
         id_file = None
-        self.check_list_methods(admin_token,True)
+        correct_up = self.check_list_methods(admin_token,True)
+        if correct_up:
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file: #Autoclose
+                while 1:
+                    try:
+                        receive_data = uploader.receive(size_for_section)
+                    except Ice.Exception:
+                        logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}There is an error with receive data but it return id_file')
+                        return id_file
+                    if not receive_data:
+                        break #There isn´t any more data available
+                    temp_file.write(receive_data)
 
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file: #Autoclose
-            while 1:
-                try:
-                    receive_data = uploader.receive(size_for_section)
-                except Ice.Exception:
-                    logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}There is an error with receive data but it return id_file')
-                    return id_file
-                if not receive_data:
-                    break #There isn´t any more data available
-                temp_file.write(receive_data)
+                temp_file.flush()
+                temp_file.seek(0)
 
-            temp_file.flush()
-            temp_file.seek(0)
+                id_file = hashlib.sha256(temp_file.read()).hexdigest()
+                shutil.copyfile(temp_file.name, os.path.join(self.path_resources, id_file))
+                os.unlink(temp_file.name) #remove temp file
+                uploader.close()
 
-            id_file = hashlib.sha256(temp_file.read()).hexdigest()
-            shutil.copyfile(temp_file.name, os.path.join(self.path_resources, id_file))
-            os.unlink(temp_file.name) #remove temp file
-            uploader.close()
+            #Announced Files
+            path_opt = os.path.join(self.path_resources,id_file)
+            self.media_list_hash[id_file] = path_opt
 
-        #Announced Files
-        path_opt = os.path.join(self.path_resources,id_file)
-        self.media_list_hash[id_file] = path_opt
-
-        all_resources = list(self.media_list_hash.keys())
-        self.annon_file_publish.announceFiles(all_resources,self.service_id_file)
-        logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}Files has been announced')
+            all_resources = list(self.media_list_hash.keys())
+            self.annon_file_publish.announceFiles(all_resources,self.service_id_file)
+            logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}Files has been announced')
+        else:
+            logging.warning(f'{WHITE}[FileService_UploadFile] {YELLOW}-> {CIAN}We can´t check security with authenticator service')
         return id_file
 
 
     def removeFile(self, media_id, admin_token, current=None):
         """Give the identifier and the administrator token - Can throws -> Unauthorized, WrongMediaId"""
-        self.check_list_methods(admin_token,True)
-        if self.exist_media_dictionary(media_id):
-            os.remove(self.media_list_hash[media_id])
-            self.media_list_hash.pop(media_id)
+        correct_rem = self.check_list_methods(admin_token,True)
+        if correct_rem:
+            if self.exist_media_dictionary(media_id):
+                os.remove(self.media_list_hash[media_id])
+                self.media_list_hash.pop(media_id)
 
-            all_resources_up = list(self.media_list_hash.keys())
-            logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}The media has been removed')
-            self.annon_file_publish.announceFiles(all_resources_up,self.service_id_file)
+                all_resources_up = list(self.media_list_hash.keys())
+                logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}The media has been removed')
+                self.annon_file_publish.announceFiles(all_resources_up,self.service_id_file)
+            else:
+                logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}The media id doesn´t exist in our records')
+                raise IceFlix.WrongMediaId(media_id)
         else:
-            logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}The media id doesn´t exist in our records')
-            raise IceFlix.WrongMediaId(media_id)
+            logging.warning(f'{WHITE}[FileService_RemoveFile] {YELLOW}-> {CIAN}We can´t check security with authenticator service')
 
 
     def obtain_my_proxy(self, my_proxy, current=None):
@@ -236,10 +247,11 @@ class FileHandler(IceFlix.FileHandler):
     def is_authorized(self, userToken, current=None):
         """Returns True if the userToken is authorized, False otherwise"""
         auth_pr = self.get_authenticator_hand()
+        good_auth = False
         if auth_pr is not None:
             if auth_pr.isAuthorized(userToken):
-                return True
-        return False
+                good_auth = True
+        return good_auth
 
 
     def receive(self, size, userToken, current=None):
@@ -270,7 +282,6 @@ class FileUploader(IceFlix.FileUploader):
     def __init__(self, path):
         """Initialize parameters"""
         self.service_id_file_uploader = str(uuid.uuid4())
-
         self.path = path
         self.file = open(self.path, 'rb')
 
@@ -279,7 +290,6 @@ class FileUploader(IceFlix.FileUploader):
         """Receive the specified number of bytes from the file"""
         part = None
         part = self.file.read(size)
-
         return part
 
 
@@ -293,11 +303,10 @@ class FileUploader(IceFlix.FileUploader):
 #----------------------------
 class Announcements(IceFlix.Announcement):
     """Class for announcements"""
-    def __init__(self, annon_event, time_to_cancel):
+    def __init__(self, annon_event):
         """Initialize class parameters"""
         self.service_id_announc = str(uuid.uuid4())
         self.annon_event = annon_event
-        self.time_to_cancel = time_to_cancel
 
 
     def update_time(self, service_id):
@@ -318,7 +327,6 @@ class Announcements(IceFlix.Announcement):
             authenticator_list[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(service) #To AuthenticatorPrx
 
             self.update_time(service_id)
-            self.time_to_cancel.cancel()
         else:
             logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} The Announcement with id {WHITE}%s {CIAN}has been ignored{WHITE}', str(service_id))
 
@@ -363,31 +371,21 @@ class RunFile(Ice.Application):
         time_annon_sent.start() #thread running in background
 
 
-    def timer_kill(self, current=None):
-        """If we haven´t got any authenticator shutdown service"""
-        logging.warning(f'{WHITE}[Announces] {YELLOW}-> {CIAN}Service will shutdown, there isn´t any authenticator')
-        self.broker.shutdown() # or better -> os._exit(os.EX_OK)
-
-
     def run(self, args):
         #Initialize
-        time_v = 12
         self.broker = self.communicator()
         adapter = self.broker.createObjectAdapter("FileServiceAdapter")
         adapter.activate()
 
         #Topics
-        topic_annon = get_topic(getTopic_manager(self.broker), "Announcements")
-        topic_annon_for_files = get_topic(getTopic_manager(self.broker), "FileAvailabilityAnnounce")
+        topic_annon = functions_topics.get_topic(functions_topics.getTopic_manager(self.broker), "Announcements")
+        topic_annon_for_files = functions_topics.get_topic(functions_topics.getTopic_manager(self.broker), "FileAvailabilityAnnounce")
 
         #For publish
         self.annon_publish = IceFlix.AnnouncementPrx.uncheckedCast(topic_annon.getPublisher())
         self.annon_my_files = IceFlix.FileAvailabilityAnnouncePrx.uncheckedCast(topic_annon_for_files.getPublisher())
 
-        #Timer for kill if not main
-        time_to_cancel_run = threading.Timer(time_v, self.timer_kill)
-        time_to_cancel_run.start()
-        annon_servant = Announcements(self.event_init, time_to_cancel_run)
+        annon_servant = Announcements(self.event_init)
         self.proxy_for_announce = adapter.addWithUUID(annon_servant)
 
         topic_annon.subscribeAndGetPublisher({}, self.proxy_for_announce) #Subscribe
@@ -401,19 +399,6 @@ class RunFile(Ice.Application):
         self.servant.obtain_my_proxy(self.my_proxy)
 
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy)
-        self.event_init.wait(time_v)
-
-        #----------------------------------------
-        """
-        #logging.warning(self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh"))
-        
-        prox_open_file = None
-        prox_open_file = self.servant.openFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        logging.warning("prox_open_file: %s ",str(prox_open_file))
-
-        self.servant.removeFile("866975148d3dbedcd545f92bf9a27317b456c5cff3bf8fe5dd8c0d58b29f9cfe", "hhhhh")
-        """
-        #----------------------------------------
 
         if self.event_init.is_set():
             self.annon_sent() #Announce (10 seconds)

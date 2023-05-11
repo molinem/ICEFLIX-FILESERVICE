@@ -37,7 +37,8 @@ try:
 except ImportError:
     logging.error("[FileService] -> There is one error with import iceflix module")
 
-from functions_topics import getTopic_manager,get_topic
+#from functions_topics import getTopic_manager,get_topic
+from iceflix import functions_topics
 
 YELLOW = "\033[93m"
 GREEN = "\033[32m"
@@ -372,14 +373,13 @@ class RunFile(Ice.Application):
 
     def run(self, args):
         #Initialize
-        time_v = 12
         self.broker = self.communicator()
         adapter = self.broker.createObjectAdapter("FileServiceAdapter")
         adapter.activate()
 
         #Topics
-        topic_annon = get_topic(getTopic_manager(self.broker), "Announcements")
-        topic_annon_for_files = get_topic(getTopic_manager(self.broker), "FileAvailabilityAnnounce")
+        topic_annon = functions_topics.get_topic(functions_topics.getTopic_manager(self.broker), "Announcements")
+        topic_annon_for_files = functions_topics.get_topic(functions_topics.getTopic_manager(self.broker), "FileAvailabilityAnnounce")
 
         #For publish
         self.annon_publish = IceFlix.AnnouncementPrx.uncheckedCast(topic_annon.getPublisher())
