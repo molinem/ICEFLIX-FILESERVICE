@@ -83,7 +83,6 @@ class FileService(IceFlix.FileService):
         self.annon_file_publish = annon_file_publish
 
         self.media_list_hash = {}
-
         self.make_hash_medias()
 
 
@@ -270,7 +269,6 @@ class FileUploader(IceFlix.FileUploader):
     def __init__(self, path):
         """Initialize parameters"""
         self.service_id_file_uploader = str(uuid.uuid4())
-
         self.path = path
         self.file = open(self.path, 'rb')
 
@@ -279,7 +277,6 @@ class FileUploader(IceFlix.FileUploader):
         """Receive the specified number of bytes from the file"""
         part = None
         part = self.file.read(size)
-
         return part
 
 
@@ -293,11 +290,10 @@ class FileUploader(IceFlix.FileUploader):
 #----------------------------
 class Announcements(IceFlix.Announcement):
     """Class for announcements"""
-    def __init__(self, annon_event, time_to_cancel):
+    def __init__(self, annon_event):
         """Initialize class parameters"""
         self.service_id_announc = str(uuid.uuid4())
         self.annon_event = annon_event
-        self.time_to_cancel = time_to_cancel
 
 
     def update_time(self, service_id):
@@ -318,7 +314,6 @@ class Announcements(IceFlix.Announcement):
             authenticator_list[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(service) #To AuthenticatorPrx
 
             self.update_time(service_id)
-            self.time_to_cancel.cancel()
         else:
             logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} The Announcement with id {WHITE}%s {CIAN}has been ignored{WHITE}', str(service_id))
 
@@ -363,12 +358,6 @@ class RunFile(Ice.Application):
         time_annon_sent.start() #thread running in background
 
 
-    def timer_kill(self, current=None):
-        """If we haven´t got any authenticator shutdown service"""
-        logging.warning(f'{WHITE}[Announces] {YELLOW}-> {CIAN}Service will shutdown, there isn´t any authenticator')
-        self.broker.shutdown() # or better -> os._exit(os.EX_OK)
-
-
     def run(self, args):
         #Initialize
         time_v = 12
@@ -384,10 +373,7 @@ class RunFile(Ice.Application):
         self.annon_publish = IceFlix.AnnouncementPrx.uncheckedCast(topic_annon.getPublisher())
         self.annon_my_files = IceFlix.FileAvailabilityAnnouncePrx.uncheckedCast(topic_annon_for_files.getPublisher())
 
-        #Timer for kill if not main
-        time_to_cancel_run = threading.Timer(time_v, self.timer_kill)
-        time_to_cancel_run.start()
-        annon_servant = Announcements(self.event_init, time_to_cancel_run)
+        annon_servant = Announcements(self.event_init)
         self.proxy_for_announce = adapter.addWithUUID(annon_servant)
 
         topic_annon.subscribeAndGetPublisher({}, self.proxy_for_announce) #Subscribe
@@ -401,7 +387,6 @@ class RunFile(Ice.Application):
         self.servant.obtain_my_proxy(self.my_proxy)
 
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy)
-        self.event_init.wait(time_v)
 
         #----------------------------------------
         """
