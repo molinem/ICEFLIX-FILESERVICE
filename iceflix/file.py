@@ -293,7 +293,7 @@ class FileUploader(IceFlix.FileUploader):
         return part
 
 
-    def close(self, userToken, current=None):
+    def close(self, current=None):
         """Close File"""
         self.file.close()
 
