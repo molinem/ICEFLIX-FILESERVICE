@@ -35,7 +35,7 @@ try:
     Ice.loadSlice(os.path.join(os.path.dirname(__file__), "iceflix.ice"))
     import IceFlix # pylint:disable=import-error
 except ImportError:
-    logging.error("[FileService] -> There is one error with import iceflix module")
+    logging.warning("[FileService] -> There is one error with import iceflix module")
 
 #from functions_topics import getTopic_manager,get_topic
 from iceflix import functions_topics
