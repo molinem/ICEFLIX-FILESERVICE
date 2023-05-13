@@ -39,4 +39,6 @@ Para lanzar el servicio ejecutaremos `./run_service` el cuál iniciará el servi
 
 > El proyecto es instalable con `pip install` (setup.py) ✅ <br>
 
-> El código obtiene de media en `pylint` > 9.0 ✅
+> El código obtiene de media en `pylint` > 9.0 ✅ <br>
+
+> DockerFile ✅
