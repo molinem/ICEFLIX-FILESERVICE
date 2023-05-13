@@ -8,6 +8,10 @@ El servicio de ficheros se encarga de enviar al usuario el fichero para que pued
 🔸 **Luis Molina Muñoz-Torrero** <br>
 ***
 
+## Información Útil
+- Nuestro servicio de ficheros se anuncia en `Announcements` cada <b>10 segundos</b>.
+- Anunciamos nuestros ficheros en `FileAvailability` cada <b>20 segundos</b> (este tiempo ha sido elegido debido a que no se menciona exáctamente cuanto debería ser)
+
 ## ¿Cómo lanzamos el servicio? ⚡️
 Se ha creado en la carpeta `dist` un archivo denominado `iceflix_file-0.1.tar.gz` para instalarlo usaremos el <br> siguiente comando -> `pip install dist/iceflix_file-0.1.tar.gz` <br>
 
