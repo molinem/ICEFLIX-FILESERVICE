@@ -3,5 +3,5 @@
 echo "------------------------"
 echo "Running File service"
 echo "------------------------"
-#python3 iceflix/file.py --Ice.Config=configs/fileservice.config
-iceflix-file --Ice.Config=configs/fileservice.config
+#iceflix-file --Ice.Config=configs/fileservice.config
+python3 iceflix/file.py --Ice.Config=configs/fileservice.config

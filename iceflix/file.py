@@ -47,7 +47,10 @@ CIAN = "\033[36m"
 WHITE = "\033[37m"
 MAGENTA = "\033[35m"
 
-logging.basicConfig(level=logging.WARNING)
+
+LOG_FORMAT = '%(asctime)s - %(levelname)-7s - %(message)s'
+logging.basicConfig(level=logging.WARNING,format=LOG_FORMAT)
+
 
 last_authenticator_update = {}
 authenticator_list = {}
@@ -325,7 +328,6 @@ class Announcements(IceFlix.Announcement):
         if not service_id in authenticator_list and service.ice_isA("::IceFlix::Authenticator"):
             logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} New authenticator service has been detected with id {WHITE}%s', str(service_id))
             authenticator_list[service_id] = IceFlix.AuthenticatorPrx.uncheckedCast(service) #To AuthenticatorPrx
-
             self.update_time(service_id)
         else:
             logging.warning(f'{YELLOW}[Announcements] {YELLOW}-> {CIAN} The Announcement with id {WHITE}%s {CIAN}has been ignored{WHITE}', str(service_id))
@@ -400,9 +402,8 @@ class RunFile(Ice.Application):
 
         self.my_proxy = IceFlix.FileServicePrx.uncheckedCast(self.my_proxy)
 
-        if self.event_init.is_set():
-            self.annon_sent() #Announce (10 seconds)
-            self.annon_files_others() #FileAvailabityAnnounce (20 seconds)
+        self.annon_sent() #Announce (10 seconds)
+        self.annon_files_others() #FileAvailabityAnnounce (20 seconds)
 
         self.shutdownOnInterrupt()
         self.broker.waitForShutdown()
