@@ -12,13 +12,12 @@ El servicio de ficheros se encarga de enviar al usuario el fichero para que pued
 - Nuestro servicio de ficheros se anuncia en `Announcements` cada <b>10 segundos</b>.
 - Anunciamos nuestros ficheros en `FileAvailability` cada <b>20 segundos</b> (este tiempo ha sido elegido debido a que no se menciona exáctamente cuanto debería ser)
 - Haciendo uso de setup.py se ha creado en la carpeta `dist` un archivo denominado `iceflix_file-0.1.tar.gz` para instalarlo usaremos el <br> siguiente comando -> `pip install dist/iceflix_file-0.1.tar.gz` <br>
-
+***
 ## ¿Cómo lanzamos el servicio? ⚡️
 - Primero hacemos uso del comando `pip install .` <br>
 
 - Para lanzar el servicio ejecutaremos `./run_service` el cuál iniciará el servicio <b>FileService</b> con la configuración que se encuentra en el configs/fileservice.config. Por ello es necesario que previamente editemos ese fichero añadiendo el <b>IceStorm.TopicManager</b> que queramos.
 ***
-
 ## Descripción clases
 
 ### FileService
